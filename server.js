@@ -9,7 +9,11 @@ const cookie_parser = require("cookie-parser");
 const mongoose = require("mongoose");
 
 const PORT = process.env.PORT || 3200;
-const app = express();
+const app = express()
+
+const cookieParser = require('cookie-parser');
+app.use(cookieParser());
+
 const dbconnect = require("./config/dbconnnect");
 
 // Routes imports

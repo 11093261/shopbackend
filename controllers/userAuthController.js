@@ -7,8 +7,15 @@ const redis = require("redis")
 const client = redis.createClient({
   host:"localhost",
   port:3200
-
 })
+
+// Set cookie options
+const cookieOptions = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
+  sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+  maxAge: 60 * 60 * 1000 // 1 hour
+};
 
 const getAllusers = async (req, res) => {
     try {
@@ -20,25 +27,21 @@ const getAllusers = async (req, res) => {
     }
 };
 
-
 const getOneuser = async(req,res)=>{
   try {
     const user = await userAuth.findOne({
       _id:req.user.id,
       userId:req.user_id
-
     })
     if(!user){
       return res.status(401).json({message:"user not found"})
     }
     res.json({user})
-    
   } catch (error) {
     console.log(error)
-
-    
   }
 }
+
 const createnewuser = async (req, res) => {
     try {
         const { name, email, phone, password } = req.body;
@@ -59,18 +62,27 @@ const createnewuser = async (req, res) => {
             phone,
             password: hashedPwd,
         });
+        
         const token = jwt.sign(
-      { userId: user._id },
-      process.env.ACCESS_TOKEN_SECRET,
-      { expiresIn: '1h' }
-    );
+          { userId: user._id },
+          process.env.ACCESS_TOKEN_SECRET,
+          { expiresIn: '1h' }
+        );
 
-        return res.status(201).json({ message: "User created successfully" });
+        // Set token in HTTP-only cookie
+        res.cookie('accessToken', token, cookieOptions);
+        
+        return res.status(201).json({ 
+          message: "User created successfully",
+          userId: user._id,
+          name: user.name
+        });
     } catch (error) {
         console.error(error);
         return res.status(500).json({ message: "Server error" });
     }
 };
+
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -85,6 +97,7 @@ const login = async (req, res) => {
     if (!isPasswordValid) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
+    
     const accessToken = jwt.sign(
       { userId: user._id.toString(), email: user.email },  
       process.env.ACCESS_TOKEN_SECRET,
@@ -96,10 +109,18 @@ const login = async (req, res) => {
       process.env.REFRESH_TOKEN_SECRET,
       { expiresIn: "7d" }
     );
+    
     user.refreshToken = refreshToken;
     await user.save();
+    
+    // Set tokens in HTTP-only cookies
+    res.cookie('accessToken', accessToken, cookieOptions);
+    res.cookie('refreshToken', refreshToken, {
+      ...cookieOptions,
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+    
     res.json({
-      accessToken,  
       userId: user._id,  
       name: user.name
     });
@@ -109,8 +130,9 @@ const login = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
+
 const handleRefreshToken = async (req, res) => {
-  const refreshToken = req.cookies?.jwt;
+  const refreshToken = req.cookies?.refreshToken;
   if (!refreshToken) return res.sendStatus(401);
 
   jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET, async (err, decoded) => {
@@ -120,15 +142,40 @@ const handleRefreshToken = async (req, res) => {
     if (!user || user.refreshToken !== refreshToken) {
       return res.sendStatus(403);
     }
+    
     const newAccessToken = jwt.sign(
       { userId: user._id }, 
       process.env.ACCESS_TOKEN_SECRET,
-      { expiresIn: "30m" }
+      { expiresIn: "1h" }
     );
 
-    res.json({ accessToken: newAccessToken });
+    // Set new access token in HTTP-only cookie
+    res.cookie('accessToken', newAccessToken, cookieOptions);
+    
+    res.json({ message: "Token refreshed successfully" });
   });
 }
+
+const logout = async (req, res) => {
+  try {
+    // Clear the tokens from the user document
+    const user = await userAuth.findById(req.user._id);
+    if (user) {
+      user.refreshToken = null;
+      await user.save();
+    }
+    
+    // Clear the cookies
+    res.clearCookie('accessToken');
+    res.clearCookie('refreshToken');
+    
+    res.json({ message: "Logged out successfully" });
+  } catch (error) {
+    console.error("Logout error:", error);
+    res.status(500).json({ message: "Server error during logout" });
+  }
+};
+
 const userupdate = async (req, res) => {
   try {
     const { id } = req.params;
@@ -159,6 +206,7 @@ const userupdate = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
 const deleteuser = async (req, res) => {
   try {
     const { id } = req.params; 
@@ -179,8 +227,6 @@ const deleteuser = async (req, res) => {
   }
 };
 
-
-
 module.exports = {
     getAllusers,
     createnewuser,
@@ -188,5 +234,6 @@ module.exports = {
     getOneuser,
     handleRefreshToken,
     userupdate,
-    deleteuser
+    deleteuser,
+    logout
 };

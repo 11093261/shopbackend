@@ -1,15 +1,12 @@
 const jwt = require("jsonwebtoken");
 const userAuth = require("../models/userAuth");
-require("dotenv").config()
-const verifyAdminToken = async (req, res, next) => {
-    try {
-        // Extract token from Authorization header
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return res.status(401).json({ message: "No token provided or invalid format" });
-        }
+require("dotenv").config();
 
-        const token = authHeader.split(' ')[1];
+const authenticate = async (req, res, next) => {
+    try {
+        // Extract token from cookies
+        const token = req.cookies.accessToken;
+        
         if (!token) {
             return res.status(401).json({ message: "No token provided" });
         }
@@ -17,15 +14,13 @@ const verifyAdminToken = async (req, res, next) => {
         // Verify token
         const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
         
-        // Find user and verify admin role
+        // Find user
         const user = await userAuth.findById(decoded.userId);
         if (!user) {
             return res.status(404).json({ message: "User not found" });
         }
 
-        
-
-        // Attach full user to request
+        // Attach user to request
         req.user = user;
         next();
     } catch (error) {
@@ -39,4 +34,4 @@ const verifyAdminToken = async (req, res, next) => {
     }
 };
 
-module.exports = verifyAdminToken;
+module.exports = authenticate;
