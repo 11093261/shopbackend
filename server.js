@@ -1,10 +1,10 @@
-
 const express = require("express");
 const path = require("path");
 const morgan = require("morgan");
-const http = require("http"); 
+const http = require("http");
 const { Server } = require("socket.io");
 const cors = require("cors");
+require("dotenv").config()
 const cookie_parser = require("cookie-parser");
 const mongoose = require("mongoose");
 
@@ -31,18 +31,59 @@ const postpaymentRoute = require("./routes/postpayment")
 const shippingRoute = require("./routes/shippingRoute")
 const orderPaymentRoute = require("./routes/orderPaymentRoute")
 
-// Create HTTP server
-const server = http.createServer(app); // Now http is defined
+// Trust proxy to handle X-Forwarded-* headers from ALB
+app.set('trust proxy', true);
 
-// Socket.IO setup
-const io = new Server(server, {
-  cors: {
-    origin: "http://localhost:5173",
-    credentials: true,
-    methods: ["GET", "POST"]
-  }
+// CORS configuration
+const corsOptions = {
+  origin: [
+    "http://localhost:5173",
+    "https://main.dfhc5lowsfl4h.amplifyapp.com",
+    "https://shopspher.com",
+    "https://api.shopspher.com",
+    "https://www.shopspher.com"
+  ],
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"]
+};
+
+// Apply CORS middleware
+app.use(cors(corsOptions));
+
+// Handle preflight requests
+app.options('/', cors(corsOptions));
+
+// Security middleware for HTTPS behind ALB
+app.use((req, res, next) => {
+  // Set security headers
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  
+  next();
 });
 
+// Create HTTP server (no HTTPS needed since ALB handles SSL)
+const server = http.createServer(app);
+
+// Socket.io configuration with proper WebSocket handling for ALB
+const io = new Server(server, {
+  cors: {
+    origin: [
+      "http://localhost:5173",
+      "https://main.dfhc5lowsfl4h.amplifyapp.com",
+      "https://shopspher.com",
+      "https://api.shopspher.com"
+    ],
+    credentials: true,
+    methods: ["GET", "POST"]
+  },
+  transports: ['websocket', 'polling'] // Ensure WebSocket transport works through ALB
+});
+
+// Socket.io connection handling
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
@@ -51,8 +92,6 @@ io.on('connection', (socket) => {
     const { roomId, sellerId, userId, userType, userName } = data;
     socket.join(roomId);
     console.log(`User ${userId} joined room ${roomId}`);
-
-    // Fetch previous messages
     try {
       const messages = await Message.find({ roomId }).sort({ timestamp: 1 });
       socket.emit('previous_messages', messages);
@@ -60,7 +99,6 @@ io.on('connection', (socket) => {
       console.error('Error fetching messages:', err);
     }
 
-    // For sellers, fetch their conversations
     if (userType === 'seller') {
       try {
         const conversations = await Conversation.find({ sellerId }).sort({ timestamp: -1 });
@@ -121,23 +159,14 @@ io.on('connection', (socket) => {
   });
 });
 
-
-
-
 // Middleware
 app.use(cookie_parser());
-app.use(cors({
-  origin: "http://localhost:5173",
-  credentials: true
-}));
-
 dbconnect();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, "views", "index.html")));
+app.use(express.static(path.join(__dirname, "public")));
 
-
-
+// Routes
 app.use("/api", productRouter);
 app.use("/api", adminRoute);
 app.use("/api", sellerRoute);
@@ -147,11 +176,23 @@ app.use("/api", paymentRoute);
 app.use("/api/orders", OrderRoute);
 app.use("/api", chatRoute);
 app.use("/api", sellertextRoute);
-app.use("/api",postpaymentRoute)
-app.use("/api",shippingRoute)
-app.use("/api",orderPaymentRoute)
-app.all('/', (req, res) =>{
-  if (req.accepts("html")){
+app.use("/api", postpaymentRoute);
+app.use("/api", shippingRoute);
+app.use("/api", orderPaymentRoute);
+
+// Health check endpoint for ALB
+app.get('/health', (req, res) => {
+  res.status(200).json({ 
+    status: 'healthy', 
+    timestamp: new Date(),
+    https: req.secure,
+    server: 'ShopSpher Backend'
+  });
+});
+
+// Root endpoint
+app.all('/', (req, res) => {
+  if (req.accepts("html")) {
     res.sendFile(path.join(__dirname, "..", "index.html"));
   } else if (req.accepts("json")) {
     res.status(404).json({ message: "404 NOT FOUND" });
@@ -159,9 +200,30 @@ app.all('/', (req, res) =>{
     res.type("text").send("json");
   }
 });
+
 app.use(morgan("dev"));
-mongoose.connection.once("open", () => {
-  console.log("Database connected");
-  server.listen(PORT, () => console.log(`Server is running on port ${PORT}`)); 
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: 'Something went wrong!' });
 });
 
+mongoose.connection.once("open", () => {
+  console.log("Database connected");
+  
+  // Start main server only
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server is running on port ${PORT}`);
+  });
+});
+
+// Handle graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, shutting down gracefully');
+  server.close(() => {
+    console.log('Main server closed');
+    mongoose.connection.close();
+    process.exit(0);
+  });
+});

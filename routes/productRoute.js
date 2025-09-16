@@ -6,7 +6,7 @@ const authenticateUser = require("../middleware/auth");
 const productController = require("../controllers/productController")
 
 const router = express.Router();
-router.get('/product',productController.getproducts );
+router.get('/product', productController.getproducts );
 router.get('/seller/:id',authenticateUser, productController.getproduct);
 router.post('/product', 
   authenticateUser, 
