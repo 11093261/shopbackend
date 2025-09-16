@@ -62,8 +62,15 @@ app.use((req, res, next) => {
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   res.setHeader('X-XSS-Protection', '1; mode=block');
   
-  next();
+  // If behind ALB, check if request was originally HTTPS
+  if (req.secure || req.headers['x-forwarded-proto'] === 'https') {
+    next();
+  } else {
+    // Redirect to HTTPS if needed
+    res.redirect('https://' + req.headers.host + req.url);
+  }
 });
+
 
 // Create HTTP server (no HTTPS needed since ALB handles SSL)
 const server = http.createServer(app);
@@ -181,23 +188,79 @@ app.use("/api", shippingRoute);
 app.use("/api", orderPaymentRoute);
 
 // Health check endpoint for ALB
-app.get('/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'healthy', 
-    timestamp: new Date(),
-    https: req.secure,
-    server: 'ShopSpher Backend'
-  });
-});
+ app.get('/health', (req, res) => {
+   res.status(200).json({ 
+     status: 'healthy', 
+     timestamp: new Date(),
+     server: 'ShopSpher Backend'
+   });
+ });
+
+// // Root endpoint
+  app.all('/', (req, res) => {
+    res.json({ 
+      message: 'ShopSpher API Server', 
+     version: '1.0',
+      endpoints: {
+        health: '/health',
+        api: '/api',
+        auth: '/auth'
+      }
+    });
+  })
 
 // Root endpoint
+// Add this debug code temporarily to see the actual path
 app.all('/', (req, res) => {
   if (req.accepts("html")) {
-    res.sendFile(path.join(__dirname, "..", "index.html"));
+    const filePath = '/var/www/Shopshere/shopbackend/views/index.html'; // ← ABSOLUTE PATH
+    
+    res.sendFile(filePath, (err) => {
+      if (err) {
+        console.error('Error sending index.html:', err);
+        res.json({ 
+          message: 'ShopSpher API Server', 
+          version: '1.0',
+          status: 'online'
+        });
+      }
+    });
   } else if (req.accepts("json")) {
-    res.status(404).json({ message: "404 NOT FOUND" });
+    res.json({ 
+      message: 'ShopSpher API Server', 
+      version: '1.0',
+      status: 'online'
+    });
   } else {
-    res.type("text").send("json");
+    res.type("text").send("ShopSpher API Server - use JSON or HTML");
+  }
+});
+// Add this debug code to see what __dirname actually is
+console.log('Current __dirname:', __dirname);
+
+app.all('/', (req, res) => {
+  if (req.accepts("html")) {
+    const filePath = path.join(__dirname, "views", "index.html");
+    console.log('Looking for file at:', filePath); // ← DEBUG
+    
+    res.sendFile(filePath, (err) => {
+      if (err) {
+        console.error('Error sending index.html:', err);
+        res.json({ 
+          message: 'ShopSpher API Server', 
+          version: '1.0',
+          status: 'online'
+        });
+      }
+    });
+  } else if (req.accepts("json")) {
+    res.json({ 
+      message: 'ShopSpher API Server', 
+      version: '1.0',
+      status: 'online'
+    });
+  } else {
+    res.type("text").send("ShopSpher API Server - use JSON or HTML");
   }
 });
 
