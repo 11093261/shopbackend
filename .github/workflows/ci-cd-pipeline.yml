@@ -1,42 +1,130 @@
-name: Backend CI Pipeline
+name: 🚀 Backend CI/CD Pipeline
 
 on:
   push:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  workflow_dispatch: # Manual trigger
 
 jobs:
   test-backend:
+    name: 🧪 Test Backend
     runs-on: ubuntu-latest
     
     services:
-      # Add if you need MongoDB, Redis, etc. for testing
       mongodb:
         image: mongo:latest
         ports:
           - 27017:27017
+        options: >-
+          --health-cmd mongosh
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     
     steps:
-    - name: Checkout code
+    - name: 🚚 Checkout code
       uses: actions/checkout@v4
       
-    - name: Setup Node.js
+    - name: ⎔ Setup Node.js
       uses: actions/setup-node@v4
       with:
         node-version: '18'
+        cache: 'npm'
         
-    - name: Install dependencies
-      run: npm ci  # More reliable than npm install for CI
+    - name: 📥 Install dependencies
+      run: npm ci
       
-    - name: Run security audit
-      run: npm audit
+    - name: 🔒 Run security audit
+      run: npm audit --audit-level=moderate
       
-    - name: Run tests
+    - name: ✅ Run tests
       run: npm test
       env:
         NODE_ENV: test
-        DATABASE_URL: mongodb://localhost:27017/test_db
+        MONGODB_URI: mongodb://localhost:27017/test_db
+        ACCESS_TOKEN_SECRET: test-secret-for-ci
+        REFRESH_TOKEN_SECRET: test-refresh-secret-for-ci
+        PORT: 3200
+
+  deploy-production:
+    name: 🎯 Deploy to AWS EC2
+    runs-on: ubuntu-latest
+    needs: test-backend # Only deploy if tests pass
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    
+    steps:
+    - name: 🚚 Checkout code
+      uses: actions/checkout@v4
+      
+    - name: ⎔ Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
         
-    - name: Build verification
-      run: npm run build || echo "No build script"
+    - name: 📥 Install production dependencies
+      run: npm ci --production
+      
+    - name: 🔐 Deploy to AWS EC2
+      uses: appleboy/ssh-action@v1.0.3
+      env:
+        MONGODB_URI: ${{ secrets.MONGODB_URI }}
+        ACCESS_TOKEN_SECRET: ${{ secrets.ACCESS_TOKEN_SECRET }}
+        REFRESH_TOKEN_SECRET: ${{ secrets.REFRESH_TOKEN_SECRET }}
+        ADMIN_ACCESS_TOKEN_SECRET: ${{ secrets.ADMIN_ACCESS_TOKEN_SECRET }}
+        ADMIN_REFRESH_TOKEN_SECRET: ${{ secrets.ADMIN_REFRESH_TOKEN_SECRET }}
+        SECRET_KEY: ${{ secrets.SECRET_KEY }}
+        PAYSTACK_SECRET_KEY: ${{ secrets.PAYSTACK_SECRET_KEY }}
+        PAYSTACK_PUBLIC_KEY: ${{ secrets.PAYSTACK_PUBLIC_KEY }}
+        CLOUDINARY_URL: ${{ secrets.CLOUDINARY_URL }}
+      with:
+        host: ${{ secrets.SERVER_HOST }}
+        username: ${{ secrets.SERVER_USER }}
+        key: ${{ secrets.SERVER_SSH_KEY }}
+        script: |
+          echo "🚀 Starting deployment to AWS EC2..."
+          cd /var/www/shopbackend
+          
+          # Create production environment file
+          echo "📁 Creating .env file..."
+          cat > .env << EOF
+          NODE_ENV=production
+          PORT=3200
+          MONGODB_URI=$MONGODB_URI
+          ACCESS_TOKEN_SECRET=$ACCESS_TOKEN_SECRET
+          REFRESH_TOKEN_SECRET=$REFRESH_TOKEN_SECRET
+          ADMIN_ACCESS_TOKEN_SECRET=$ADMIN_ACCESS_TOKEN_SECRET
+          ADMIN_REFRESH_TOKEN_SECRET=$ADMIN_REFRESH_TOKEN_SECRET
+          SECRET_KEY=$SECRET_KEY
+          PAYSTACK_SECRET_KEY=$PAYSTACK_SECRET_KEY
+          PAYSTACK_PUBLIC_KEY=$PAYSTACK_PUBLIC_KEY
+          CLOUDINARY_URL=$CLOUDINARY_URL
+          FRONT_END_URL=http://localhost:5173
+          SHOPSPHERE_URL=https://www.shopspher.com
+          EOF
+          
+          echo "📥 Pulling latest code..."
+          git fetch origin main
+          git reset --hard origin/main
+          
+          echo "🔧 Installing production dependencies..."
+          npm ci --production
+          
+          echo "🔄 Starting/Restarting application with PM2..."
+          # Start with PM2 or restart if already running
+          pm2 start ecosystem.config.js --env production || pm2 reload ecosystem.config.js --env production
+          
+          echo "💾 Saving PM2 configuration..."
+          pm2 save
+          
+          echo "✅ Deployment completed successfully!"
+          echo "🌐 Health check: http://${{ secrets.SERVER_HOST }}:3200/health"
+          
+    - name: 📊 Verify deployment
+      run: |
+        echo "Waiting for application to start..."
+        sleep 10
+        curl -f http://${{ secrets.SERVER_HOST }}:3200/health || exit 1
+        echo "✅ Application is healthy and responding!"
