@@ -7,10 +7,8 @@ const cors = require("cors");
 require("dotenv").config();
 const cookieParser = require("cookie-parser");
 const mongoose = require("mongoose");
-
 const PORT = process.env.PORT || 3200;
 const app = express();
-
 const dbconnect = require("./config/dbconnnect");
 const adminRoute = require("./routes/adminRoute");
 const productRouter = require("./routes/productRoute");
@@ -25,8 +23,6 @@ const Conversation = require('./models/conversation');
 const postpaymentRoute = require("./routes/postpayment");
 const shippingRoute = require("./routes/shippingRoute");
 const orderPaymentRoute = require("./routes/orderPaymentRoute");
-
-// Security headers and HTTPS redirect
 app.use((req, res, next) => {
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -56,17 +52,12 @@ app.options('/', cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-
-// Only use morgan in non-test environments
 if (process.env.NODE_ENV !== 'test') {
   app.use(morgan("dev"));
 }
-
 app.use(express.static(path.join(__dirname, "public")));
 app.use(express.static('/var/www/Shopshere'));
 app.use("/upload", express.static("upload"));
-
-// Routes
 app.use("/auth", authRoute);
 app.use("/api", productRouter);
 app.use("/api", adminRoute);
@@ -78,8 +69,6 @@ app.use("/api", sellertextRoute);
 app.use("/api", postpaymentRoute);
 app.use("/api", shippingRoute);
 app.use("/api", orderPaymentRoute);
-
-// Health check endpoint
 app.get('/health', (req, res) => {
   const healthCheck = {
     status: 'healthy',
@@ -92,8 +81,6 @@ app.get('/health', (req, res) => {
   };
   res.status(200).json(healthCheck);
 });
-
-// Simple health check for load balancers
 app.get('/healthz', (req, res) => {
   res.status(200).send('OK');
 });
@@ -113,8 +100,6 @@ app.get('/ready', (req, res) => {
     });
   }
 });
-
-// Root route handler
 app.all('/', (req, res) => {
   if (req.accepts("html")) {
     const filePath = path.join(__dirname, "views", "index.html");
@@ -146,8 +131,6 @@ app.all('/', (req, res) => {
     res.type("text").send("ShopSpher API Server - use JSON or HTML");
   }
 });
-
-// 404 Handler
 app.use((req, res) => {
   res.status(404).json({
     error: 'Route not found',
@@ -156,8 +139,6 @@ app.use((req, res) => {
     timestamp: new Date().toISOString()
   });
 });
-
-// Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Server Error:', err.message);
   res.status(err.status || 500).json({
@@ -168,11 +149,7 @@ app.use((err, req, res, next) => {
     timestamp: new Date().toISOString()
   });
 });
-
-// Create HTTP server for Socket.IO
 const server = http.createServer(app);
-
-// Socket.IO configuration
 const io = new Server(server, {
   cors: {
     origin: [
@@ -188,15 +165,12 @@ const io = new Server(server, {
   },
   transports: ['websocket', 'polling']
 });
-
-// Socket.IO event handlers
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
   
   socket.on('join_chat', async (data) => {
     const { roomId, sellerId, userId, userType, userName } = data;
-    socket.join(roomId);
-    
+    socket.join(roomId); 
     try {
       const messages = await Message.find({ roomId }).sort({ timestamp: 1 });
       socket.emit('previous_messages', messages);
@@ -214,7 +188,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('send_message', async (data) => {
+  socket.on('send_message', async (data) =>{
     const { roomId, sellerId, userId, message, sender, senderName } = data;
     
     try {
@@ -239,7 +213,6 @@ io.on('connection', (socket) => {
         },
         { upsert: true, new: true }
       );
-      
       io.to(roomId).emit('message_received', newMessage);
       
       if (sender === 'buyer') {
@@ -259,21 +232,18 @@ io.on('connection', (socket) => {
     console.log('User disconnected:', socket.id);
   });
 });
-
-// Function to start server (only called when not in test environment)
 const startServer = async () => {
   try {
     await dbconnect();
-    
     mongoose.connection.once("open", () => {
       console.log("Database connected successfully");
       
       server.listen(PORT, '0.0.0.0', () => {
-        console.log(`🚀 Server is running on port ${PORT}`);
+        console.log(` Server is running on port ${PORT}`);
         console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
-        console.log(`🌐 Health check available at: http://localhost:${PORT}/health`);
-        console.log(`🔍 Simple health check at: http://localhost:${PORT}/healthz`);
-        console.log(`📊 Readiness check at: http://localhost:${PORT}/ready`);
+        console.log(` Health check available at: http://localhost:${PORT}/health`);
+        console.log(` Simple health check at: http://localhost:${PORT}/healthz`);
+        console.log(`Readiness check at: http://localhost:${PORT}/ready`);
       });
     });
 
@@ -286,13 +256,9 @@ const startServer = async () => {
     process.exit(1);
   }
 };
-
-// Only start server if this file is run directly (not when imported for tests)
 if (require.main === module && process.env.NODE_ENV !== 'test') {
   startServer();
 }
-
-// Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('SIGTERM received, shutting down gracefully');
   server.close(() => {
@@ -303,7 +269,6 @@ process.on('SIGTERM', () => {
     });
   });
 });
-
 process.on('SIGINT', () => {
   console.log('SIGINT received, shutting down gracefully');
   server.close(() => {
@@ -311,6 +276,4 @@ process.on('SIGINT', () => {
     process.exit(0);
   });
 });
-
-// Export app for testing and server for production
 module.exports = { app, server, startServer };

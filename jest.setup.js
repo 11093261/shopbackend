@@ -1,9 +1,5 @@
-// jest.setup.js
-// Global test setup to handle async operations and silence logs
 
 jest.setTimeout(30000);
-
-// Silence console logs during tests
 const originalConsoleLog = console.log;
 const originalConsoleError = console.error;
 const originalConsoleWarn = console.warn;
@@ -26,7 +22,5 @@ console.warn = (...args) => {
   }
 };
 
-// Global teardown
 afterAll(async () => {
-  // Add any global cleanup here
 });
