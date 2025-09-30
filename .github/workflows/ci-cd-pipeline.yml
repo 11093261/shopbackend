@@ -26,6 +26,8 @@ jobs:
     steps:
     - name: 🚚 Checkout code
       uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.WORKFLOW_SECRET }}  # Added PAT here
       
     - name: ⎔ Setup Node.js
       uses: actions/setup-node@v4
@@ -57,6 +59,8 @@ jobs:
     steps:
     - name: 🚚 Checkout code
       uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.WORKFLOW_SECRET }}  # Added PAT here
       
     - name: ⎔ Setup Node.js
       uses: actions/setup-node@v4
@@ -69,17 +73,7 @@ jobs:
       
     - name: 🔐 Deploy to AWS EC2
       uses: appleboy/ssh-action@v1.0.3
-      env:
-        MONGODB_URI: ${{ secrets.MONGODB_URI }}
-        ACCESS_TOKEN_SECRET: ${{ secrets.ACCESS_TOKEN_SECRET }}
-        REFRESH_TOKEN_SECRET: ${{ secrets.REFRESH_TOKEN_SECRET }}
-        ADMIN_ACCESS_TOKEN_SECRET: ${{ secrets.ADMIN_ACCESS_TOKEN_SECRET }}
-        ADMIN_REFRESH_TOKEN_SECRET: ${{ secrets.ADMIN_REFRESH_TOKEN_SECRET }}
-        SECRET_KEY: ${{ secrets.SECRET_KEY }}
-        PAYSTACK_SECRET_KEY: ${{ secrets.PAYSTACK_SECRET_KEY }}
-        PAYSTACK_PUBLIC_KEY: ${{ secrets.PAYSTACK_PUBLIC_KEY }}
-        CLOUDINARY_URL: ${{ secrets.CLOUDINARY_URL }}
-      with:
+      with:  # Changed from 'env' to 'with' for SSH inputs
         host: ${{ secrets.SERVER_HOST }}
         username: ${{ secrets.SERVER_USER }}
         key: ${{ secrets.SERVER_SSH_KEY }}
@@ -87,20 +81,20 @@ jobs:
           echo "🚀 Starting deployment to AWS EC2..."
           cd /var/www/shopbackend
           
-          # Create production environment file
+          # Create production environment file using GitHub Secrets directly
           echo "📁 Creating .env file..."
           cat > .env << EOF
           NODE_ENV=production
           PORT=3200
-          MONGODB_URI=$MONGODB_URI
-          ACCESS_TOKEN_SECRET=$ACCESS_TOKEN_SECRET
-          REFRESH_TOKEN_SECRET=$REFRESH_TOKEN_SECRET
-          ADMIN_ACCESS_TOKEN_SECRET=$ADMIN_ACCESS_TOKEN_SECRET
-          ADMIN_REFRESH_TOKEN_SECRET=$ADMIN_REFRESH_TOKEN_SECRET
-          SECRET_KEY=$SECRET_KEY
-          PAYSTACK_SECRET_KEY=$PAYSTACK_SECRET_KEY
-          PAYSTACK_PUBLIC_KEY=$PAYSTACK_PUBLIC_KEY
-          CLOUDINARY_URL=$CLOUDINARY_URL
+          MONGODB_URI=${{ secrets.MONGODB_URI }}
+          ACCESS_TOKEN_SECRET=${{ secrets.ACCESS_TOKEN_SECRET }}
+          REFRESH_TOKEN_SECRET=${{ secrets.REFRESH_TOKEN_SECRET }}
+          ADMIN_ACCESS_TOKEN_SECRET=${{ secrets.ADMIN_ACCESS_TOKEN_SECRET }}
+          ADMIN_REFRESH_TOKEN_SECRET=${{ secrets.ADMIN_REFRESH_TOKEN_SECRET }}
+          SECRET_KEY=${{ secrets.SECRET_KEY }}
+          PAYSTACK_SECRET_KEY=${{ secrets.PAYSTACK_SECRET_KEY }}
+          PAYSTACK_PUBLIC_KEY=${{ secrets.PAYSTACK_PUBLIC_KEY }}
+          CLOUDINARY_URL=${{ secrets.CLOUDINARY_URL }}
           FRONT_END_URL=http://localhost:5173
           SHOPSPHERE_URL=https://www.shopspher.com
           EOF
