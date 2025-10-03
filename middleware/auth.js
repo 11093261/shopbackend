@@ -4,10 +4,8 @@ require("dotenv").config();
 
 const authenticate = async (req, res, next) => {
     try {
-        // Extract token from multiple sources
-        let token = req.cookies.accessToken || 
-                   req.cookies.token || 
-                   req.header('Authorization')?.replace('Bearer ', '');
+        // Extract token from cookies only (no Authorization header for production)
+        let token = req.cookies.accessToken || req.cookies.token;
 
         if (!token) {
             return res.status(401).json({ message: "No token provided" });
@@ -16,16 +14,13 @@ const authenticate = async (req, res, next) => {
         // Verify token
         const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
         
-        // Debug logging
-        console.log('Decoded token:', decoded);
-        
-        // Find user - handle both userId and _id formats
-        const userId = decoded.userId || decoded._id || decoded.id;
+        // Find user
+        const userId = decoded.userId;
         if (!userId) {
             return res.status(401).json({ message: "Invalid token payload" });
         }
 
-        const user = await userAuth.findById(userId);
+        const user = await userAuth.findById(userId).select("-password -refreshToken");
         if (!user) {
             return res.status(404).json({ message: "User not found" });
         }
