@@ -23,11 +23,37 @@ const Conversation = require('./models/conversation');
 const postpaymentRoute = require("./routes/postpayment");
 const shippingRoute = require("./routes/shippingRoute");
 const orderPaymentRoute = require("./routes/orderPaymentRoute");
+
+app.get('/alb-health', (req, res) => {
+  res.writeHead(200, { 
+    'Content-Type': 'text/plain',
+    'Cache-Control': 'no-cache'
+  });
+  res.end('ALB-HEALTHY');
+});
+
+app.get('/elb-health', (req, res) => {
+  res.writeHead(200, { 
+    'Content-Type': 'text/plain',
+    'Cache-Control': 'no-cache'
+  });
+  res.end('ELB-HEALTHY');
+});
+
+app.get('/simple-health', (req, res) => {
+  res.status(200).set('Content-Type', 'text/plain').send('SIMPLE-HEALTHY');
+});
+
 app.use((req, res, next) => {
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   res.setHeader('X-XSS-Protection', '1; mode=block');
+  
+  const healthCheckPaths = ['/alb-health', '/elb-health', '/simple-health', '/healthz', '/health', '/ready'];
+  if (healthCheckPaths.includes(req.path)) {
+    return next();
+  }
   
   if (req.headers['x-forwarded-proto'] !== 'https' && process.env.NODE_ENV === 'production') {
     return res.redirect('https://' + req.headers.host + req.url);
@@ -56,7 +82,6 @@ if (process.env.NODE_ENV !== 'test') {
   app.use(morgan("dev"));
 }
 app.use(express.static(path.join(__dirname, "public")));
-app.use(express.static('/var/www/Shopshere'));
 app.use("/upload", express.static("upload"));
 app.use("/auth", authRoute);
 app.use("/api", productRouter);
@@ -69,6 +94,7 @@ app.use("/api", sellertextRoute);
 app.use("/api", postpaymentRoute);
 app.use("/api", shippingRoute);
 app.use("/api", orderPaymentRoute);
+
 app.get('/health', (req, res) => {
   const healthCheck = {
     status: 'healthy',
@@ -81,6 +107,7 @@ app.get('/health', (req, res) => {
   };
   res.status(200).json(healthCheck);
 });
+
 app.get('/healthz', (req, res) => {
   res.status(200).send('OK');
 });
@@ -100,6 +127,7 @@ app.get('/ready', (req, res) => {
     });
   }
 });
+
 app.all('/', (req, res) => {
   if (req.accepts("html")) {
     const filePath = path.join(__dirname, "views", "index.html");
@@ -124,13 +152,17 @@ app.all('/', (req, res) => {
         ready: '/ready',
         api: '/api',
         auth: '/auth',
-        uploads: '/upload'
+        uploads: '/upload',
+        albHealth: '/alb-health',
+        elbHealth: '/elb-health',
+        simpleHealth: '/simple-health'
       }
     });
   } else {
     res.type("text").send("ShopSpher API Server - use JSON or HTML");
   }
 });
+
 app.use((req, res) => {
   res.status(404).json({
     error: 'Route not found',
@@ -139,6 +171,7 @@ app.use((req, res) => {
     timestamp: new Date().toISOString()
   });
 });
+
 app.use((err, req, res, next) => {
   console.error('Server Error:', err.message);
   res.status(err.status || 500).json({
@@ -149,6 +182,7 @@ app.use((err, req, res, next) => {
     timestamp: new Date().toISOString()
   });
 });
+
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
@@ -165,6 +199,7 @@ const io = new Server(server, {
   },
   transports: ['websocket', 'polling']
 });
+
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
   
@@ -232,19 +267,21 @@ io.on('connection', (socket) => {
     console.log('User disconnected:', socket.id);
   });
 });
+
 const startServer = async () => {
   try {
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server is running on port ${PORT}`);
+      console.log(`Health check available at: http://localhost:${PORT}/health`);
+      console.log(`Simple health check at: http://localhost:${PORT}/healthz`);
+      console.log(`Readiness check at: http://localhost:${PORT}/ready`);
+      console.log(`BULLETPROOF ALB health check at: http://localhost:${PORT}/alb-health`);
+      console.log(`ELB health check at: http://localhost:${PORT}/elb-health`);
+      console.log(`Simple health check at: http://localhost:${PORT}/simple-health`);
+    });
     await dbconnect();
     mongoose.connection.once("open", () => {
       console.log("Database connected successfully");
-      
-      server.listen(PORT, '0.0.0.0', () => {
-        console.log(` Server is running on port ${PORT}`);
-        console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
-        console.log(` Health check available at: http://localhost:${PORT}/health`);
-        console.log(` Simple health check at: http://localhost:${PORT}/healthz`);
-        console.log(`Readiness check at: http://localhost:${PORT}/ready`);
-      });
     });
 
     mongoose.connection.on('error', (err) => {
@@ -256,9 +293,11 @@ const startServer = async () => {
     process.exit(1);
   }
 };
+
 if (require.main === module && process.env.NODE_ENV !== 'test') {
   startServer();
 }
+
 process.on('SIGTERM', () => {
   console.log('SIGTERM received, shutting down gracefully');
   server.close(() => {
@@ -269,6 +308,7 @@ process.on('SIGTERM', () => {
     });
   });
 });
+
 process.on('SIGINT', () => {
   console.log('SIGINT received, shutting down gracefully');
   server.close(() => {
@@ -276,4 +316,5 @@ process.on('SIGINT', () => {
     process.exit(0);
   });
 });
+
 module.exports = { app, server, startServer };

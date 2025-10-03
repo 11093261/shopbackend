@@ -4,9 +4,11 @@ require("dotenv").config();
 
 const authenticate = async (req, res, next) => {
     try {
-        // Extract token from cookies
-        const token = req.cookies.accessToken;
-        
+        // Extract token from multiple sources
+        let token = req.cookies.accessToken || 
+                   req.cookies.token || 
+                   req.header('Authorization')?.replace('Bearer ', '');
+
         if (!token) {
             return res.status(401).json({ message: "No token provided" });
         }
@@ -14,22 +16,32 @@ const authenticate = async (req, res, next) => {
         // Verify token
         const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
         
-        // Find user
-        const user = await userAuth.findById(decoded.userId);
+        // Debug logging
+        console.log('Decoded token:', decoded);
+        
+        // Find user - handle both userId and _id formats
+        const userId = decoded.userId || decoded._id || decoded.id;
+        if (!userId) {
+            return res.status(401).json({ message: "Invalid token payload" });
+        }
+
+        const user = await userAuth.findById(userId);
         if (!user) {
             return res.status(404).json({ message: "User not found" });
         }
 
         // Attach user to request
         req.user = user;
+        req.userId = user._id;
         next();
     } catch (error) {
+        console.error("Token verification error:", error.message);
+        
         if (error.name === 'TokenExpiredError') {
             return res.status(401).json({ message: "Token expired" });
         } else if (error.name === 'JsonWebTokenError') {
             return res.status(401).json({ message: "Invalid token" });
         }
-        console.error("Token verification error:", error);
         res.status(500).json({ message: "Server error during authentication" });
     }
 };
