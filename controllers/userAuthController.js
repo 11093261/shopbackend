@@ -1,17 +1,7 @@
 const userAuth = require("../models/userAuth");
-const userPost = require("../models/chat")
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 require("dotenv").config();
-const redis = require("redis")
-const client = redis.createClient({
-  host: "localhost",
-  port: 6379 
-});
-
-client.on('error', (err) => {
-  console.log('Redis Client Error', err);
-});
 
 const cookieOptions = {
   httpOnly: true,
@@ -44,6 +34,7 @@ const getOneuser = async(req,res)=>{
     console.log(error)
   }
 }
+
 const createnewuser = async (req, res) => {
     try {
         const { name, email, phone, password } = req.body;
@@ -65,14 +56,13 @@ const createnewuser = async (req, res) => {
             password: hashedPwd,
         });
         
-        // Consistent token payload
         const token = jwt.sign(
           { userId: user._id.toString() },
           process.env.ACCESS_TOKEN_SECRET,
           { expiresIn: '1h' }
         );
 
-        // Set cookies only - no token in response body for production
+        // Set cookies only
         res.cookie('accessToken', token, cookieOptions);
         res.cookie('token', token, cookieOptions);
         
@@ -80,7 +70,6 @@ const createnewuser = async (req, res) => {
           message: "User created successfully",
           userId: user._id,
           name: user.name
-          // No token in response for production
         });
     } catch (error) {
         console.error("Registration error:", error.message); 
@@ -91,17 +80,29 @@ const createnewuser = async (req, res) => {
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
+    
+    console.log('Login attempt for:', email); // Debug log
+    
     if (!email || !password) {
+      console.log('Missing email or password');
       return res.status(400).json({ message: "All fields required" });
     }
+    
     const user = await userAuth.findOne({ email });
     if (!user) {
+      console.log('User not found for email:', email);
       return res.status(401).json({ message: "Invalid credentials" });
     }
+    
+    console.log('User found:', user.email); // Debug log
+    
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
+      console.log('Invalid password for user:', email);
       return res.status(401).json({ message: "Invalid credentials" });
     }
+    
+    console.log('Password valid, generating tokens...'); // Debug log
     
     const accessToken = jwt.sign(
       { userId: user._id.toString() },
@@ -115,10 +116,11 @@ const login = async (req, res) => {
       { expiresIn: "7d" }
     );
     
+    // Store refreshToken in database (no Redis needed)
     user.refreshToken = refreshToken;
     await user.save();
     
-    // Set cookies only - no tokens in response body
+    // Set cookies
     res.cookie('accessToken', accessToken, cookieOptions);
     res.cookie('token', accessToken, cookieOptions);
     res.cookie('refreshToken', refreshToken, {
@@ -126,38 +128,35 @@ const login = async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000
     });
     
+    console.log('Login successful for user:', user.email); // Debug log
+    
     res.json({
       userId: user._id,  
       name: user.name,
       email: user.email
-      // No accessToken in response for production
     });
     
   } catch (error) {
     console.error("Login error:", error);
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error: " + error.message });
   }
 };
-// Add this to your userAuthController.js
+
 const verifyToken = async (req, res) => {
   try {
-    // The token should be in cookies, not headers for your setup
     const token = req.cookies.accessToken || req.cookies.token;
     
     if (!token) {
       return res.status(401).json({ message: "No token provided" });
     }
 
-    // Verify the token
     const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
-    
-    // Find the user
     const user = await userAuth.findById(decoded.userId).select("-password -refreshToken");
+    
     if (!user) {
       return res.status(401).json({ message: "User not found" });
     }
 
-    // Return user information
     res.json({
       user: {
         userId: user._id,
@@ -176,6 +175,7 @@ const verifyToken = async (req, res) => {
     return res.status(500).json({ message: "Server error during verification" });
   }
 };
+
 const handleRefreshToken = async (req, res) => {
   const refreshToken = req.cookies?.refreshToken;
   if (!refreshToken) return res.sendStatus(401);
@@ -189,14 +189,13 @@ const handleRefreshToken = async (req, res) => {
     }
     
     const newAccessToken = jwt.sign(
-      { userId: user._id.toString() }, // Consistent format
+      { userId: user._id.toString() },
       process.env.ACCESS_TOKEN_SECRET,
       { expiresIn: "1h" }
     );
 
-    // Set multiple cookies
     res.cookie('accessToken', newAccessToken, cookieOptions);
-    res.cookie('token', newAccessToken, cookieOptions); // Add this
+    res.cookie('token', newAccessToken, cookieOptions);
     
     res.json({ 
       message: "Token refreshed successfully",
@@ -207,7 +206,6 @@ const handleRefreshToken = async (req, res) => {
 
 const logout = async (req, res) => {
   try {
-    // Get user ID from token if available, otherwise from body/params
     const userId = req.user?._id || req.body.userId;
     
     if (userId) {
@@ -218,7 +216,6 @@ const logout = async (req, res) => {
       }
     }
     
-    // Clear all possible cookies
     res.clearCookie('accessToken');
     res.clearCookie('token');
     res.clearCookie('refreshToken');
@@ -235,6 +232,7 @@ const userupdate = async (req, res) => {
     const { id } = req.params;
     const { name, email, phone, password } = req.body;
     const updateData = { name, email, phone };
+    
     if (password) {
       const salt = await bcrypt.genSalt(10);
       updateData.password = await bcrypt.hash(password, salt);
@@ -281,7 +279,6 @@ const deleteuser = async (req, res) => {
   }
 };
 
-// Add a test endpoint to verify tokens are working
 const testAuth = async (req, res) => {
   try {
     res.json({ 
@@ -306,6 +303,6 @@ module.exports = {
     userupdate,
     deleteuser,
     logout,
-    testAuth ,
+    testAuth,
     verifyToken
 };
