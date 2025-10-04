@@ -195,7 +195,8 @@ const io = new Server(server, {
       "https://shopfrontend-lake.vercel.app"
     ],
     credentials: true,
-    methods: ["GET", "POST"]
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
   },
   transports: ['websocket', 'polling']
 });
