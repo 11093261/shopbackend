@@ -15,5 +15,6 @@ router.post("/logout", authenticate, authController.logout);
 router.patch("/update", authenticate, authController.userupdate);
 router.delete("/delete", authenticate, authController.deleteuser);
 router.get("/testauth", authenticate, authController.testAuth);
+router.get("/verify", authenticate, authController.verifyToken);
 
 module.exports = router;

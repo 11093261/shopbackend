@@ -138,6 +138,44 @@ const login = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
+// Add this to your userAuthController.js
+const verifyToken = async (req, res) => {
+  try {
+    // The token should be in cookies, not headers for your setup
+    const token = req.cookies.accessToken || req.cookies.token;
+    
+    if (!token) {
+      return res.status(401).json({ message: "No token provided" });
+    }
+
+    // Verify the token
+    const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+    
+    // Find the user
+    const user = await userAuth.findById(decoded.userId).select("-password -refreshToken");
+    if (!user) {
+      return res.status(401).json({ message: "User not found" });
+    }
+
+    // Return user information
+    res.json({
+      user: {
+        userId: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      }
+    });
+  } catch (error) {
+    console.error("Token verification error:", error);
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({ message: "Invalid token" });
+    } else if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ message: "Token expired" });
+    }
+    return res.status(500).json({ message: "Server error during verification" });
+  }
+};
 const handleRefreshToken = async (req, res) => {
   const refreshToken = req.cookies?.refreshToken;
   if (!refreshToken) return res.sendStatus(401);
@@ -268,5 +306,6 @@ module.exports = {
     userupdate,
     deleteuser,
     logout,
-    testAuth 
+    testAuth ,
+    verifyToken
 };
