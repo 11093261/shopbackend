@@ -5,8 +5,8 @@ require("dotenv").config();
 
 const cookieOptions = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+  secure: true,
+  sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
   maxAge: 60 * 60 * 1000 // 1 hour
 };
 
@@ -79,31 +79,42 @@ const createnewuser = async (req, res) => {
 
 const login = async (req, res) => {
   try {
+    // Check for validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ 
+        message: "Validation failed",
+        errors: errors.array() 
+      });
+    }
+
     const { email, password } = req.body;
     
     console.log('Login attempt for:', email);
     
-    if (!email || !password) {
-      console.log('Missing email or password');
-      return res.status(400).json({ message: "All fields required" });
-    }
-    
+    // Find user - don't reveal if user exists or not
     const user = await userAuth.findOne({ email });
+    
+    // Always use the same generic message for security
+    const genericError = "Invalid email or password";
+    
+    // If no user found or password invalid, return same error
     if (!user) {
       console.log('User not found for email:', email);
-      return res.status(401).json({ message: "Invalid credentials" });
+      return res.status(401).json({ message: genericError });
     }
     
-    console.log('User found:', user.email);
+    console.log('User found, verifying password...');
     
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
       console.log('Invalid password for user:', email);
-      return res.status(401).json({ message: "Invalid credentials" });
+      return res.status(401).json({ message: genericError });
     }
     
     console.log('Password valid, generating tokens...');
     
+    // Token generation (your existing code is good)
     const accessToken = jwt.sign(
       { userId: user._id.toString() },
       process.env.ACCESS_TOKEN_SECRET,
@@ -116,26 +127,21 @@ const login = async (req, res) => {
       { expiresIn: "7d" }
     );
     
-    
+    // Store refreshToken in database
     user.refreshToken = refreshToken;
     await user.save();
     
+    // Set cookies - REMOVED redundant 'token' cookie
     res.cookie('accessToken', accessToken, {
       ...cookieOptions,
-      path: '/', 
-      maxAge: 60 * 60 * 1000 
-    });
-    
-    res.cookie('token', accessToken, {
-      ...cookieOptions,
-      path: '/', 
-      maxAge: 60 * 60 * 1000 
+      path: '/',
+      maxAge: 60 * 60 * 1000 // 1 hour
     });
     
     res.cookie('refreshToken', refreshToken, {
       ...cookieOptions,
-      path: '/auth/refresh', 
-      maxAge: 7 * 24 * 60 * 60 * 1000 
+      path: '/auth/refresh',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     });
     
     console.log('Login successful for user:', user.email);
@@ -148,7 +154,7 @@ const login = async (req, res) => {
     
   } catch (error) {
     console.error("Login error:", error);
-    return res.status(500).json({ message: "Server error: " + error.message });
+    return res.status(500).json({ message: "Authentication failed" });
   }
 };
 

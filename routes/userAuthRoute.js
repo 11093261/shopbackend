@@ -2,10 +2,19 @@ const express = require("express");
 const router = express.Router();
 const authController = require("../controllers/userAuthController");
 const authenticate = require("../middleware/auth");
+const { body, validationResult } = require('express-validator');
 
 // Public routes
 router.post("/registers", authController.createnewuser);
-router.post("/login", authController.login);
+
+// Add validation middleware to your route
+router.post("/login", [
+  body('email')
+    .isEmail().withMessage('Must be a valid email address')
+    .normalizeEmail(),
+  body('password')
+    .isLength({ min: 6 }).withMessage('Password must be at least 6 characters')
+], authController.login);
 router.get("/refresh", authController.handleRefreshToken);
 
 // Protected routes (require authentication)
