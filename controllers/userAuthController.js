@@ -81,7 +81,7 @@ const login = async (req, res) => {
   try {
     const { email, password } = req.body;
     
-    console.log('Login attempt for:', email); // Debug log
+    console.log('Login attempt for:', email);
     
     if (!email || !password) {
       console.log('Missing email or password');
@@ -94,7 +94,7 @@ const login = async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
     
-    console.log('User found:', user.email); // Debug log
+    console.log('User found:', user.email);
     
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
@@ -102,7 +102,7 @@ const login = async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
     
-    console.log('Password valid, generating tokens...'); // Debug log
+    console.log('Password valid, generating tokens...');
     
     const accessToken = jwt.sign(
       { userId: user._id.toString() },
@@ -116,19 +116,29 @@ const login = async (req, res) => {
       { expiresIn: "7d" }
     );
     
-    // Store refreshToken in database (no Redis needed)
+    
     user.refreshToken = refreshToken;
     await user.save();
     
-    // Set cookies
-    res.cookie('accessToken', accessToken, cookieOptions);
-    res.cookie('token', accessToken, cookieOptions);
-    res.cookie('refreshToken', refreshToken, {
+    res.cookie('accessToken', accessToken, {
       ...cookieOptions,
-      maxAge: 7 * 24 * 60 * 60 * 1000
+      path: '/', 
+      maxAge: 60 * 60 * 1000 
     });
     
-    console.log('Login successful for user:', user.email); // Debug log
+    res.cookie('token', accessToken, {
+      ...cookieOptions,
+      path: '/', 
+      maxAge: 60 * 60 * 1000 
+    });
+    
+    res.cookie('refreshToken', refreshToken, {
+      ...cookieOptions,
+      path: '/auth/refresh', 
+      maxAge: 7 * 24 * 60 * 60 * 1000 
+    });
+    
+    console.log('Login successful for user:', user.email);
     
     res.json({
       userId: user._id,  

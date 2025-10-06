@@ -1,24 +1,11 @@
 module.exports = {
   apps: [{
-    name: 'shopbackend',
-    script: './server.js',
-    instances: 1,
-    exec_mode: 'fork',
+    name: 'shopbackend', // Use a distinct name for your app
+    script: './server.js', // The correct path to your main script
     env: {
-      NODE_ENV: 'development',
-      PORT: 3200
-    },
-    env_production: {
-      NODE_ENV: 'production',
-      PORT: 3200
-    },
-    error_file: './logs/err.log',
-    out_file: './logs/out.log',
-    log_file: './logs/combined.log',
-    time: true,
-    max_memory_restart: '1G',
-    watch: false,
-    ignore_watch: ['node_modules', 'logs'],
-    autorestart: true
+      NODE_MODULE: "Production",
+      DATABASE_URL: "mongodb+srv://palmoildb:Palmoil15@cluster0.5kjtnoz.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0",
+      // ... include all your other environment variables
+    }
   }]
 };
