@@ -80,7 +80,7 @@ const createnewuser = async (req, res) => {
 
 const login = async (req, res) => {
   try {
-    const errors = validationResult(req);;
+    const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ 
         message: "Validation failed",
@@ -91,8 +91,14 @@ const login = async (req, res) => {
     const { email, password } = req.body;
     
     console.log('Login attempt for:', email);
+    
+    // Find user - don't reveal if user exists or not
     const user = await userAuth.findOne({ email });
+    
+    // Always use the same generic message for security
     const genericError = "Invalid email or password";
+    
+    // If no user found or password invalid, return same error
     if (!user) {
       console.log('User not found for email:', email);
       return res.status(401).json({ message: genericError });
@@ -107,6 +113,8 @@ const login = async (req, res) => {
     }
     
     console.log('Password valid, generating tokens...');
+    
+    // Token generation
     const accessToken = jwt.sign(
       { userId: user._id.toString() },
       process.env.ACCESS_TOKEN_SECRET,
@@ -118,12 +126,16 @@ const login = async (req, res) => {
       process.env.REFRESH_TOKEN_SECRET,
       { expiresIn: "7d" }
     );
+    
+    // Store refreshToken in database
     user.refreshToken = refreshToken;
     await user.save();
+    
+    // Set cookies - REMOVED redundant 'token' cookie
     res.cookie('accessToken', accessToken, {
       ...cookieOptions,
       path: '/',
-      maxAge: 60 * 60 * 1000 
+      maxAge: 60 * 60 * 1000 // 1 hour
     });
     
     res.cookie('refreshToken', refreshToken, {
