@@ -63,9 +63,9 @@ app.use((req, res, next) => {
 
 const corsOptions = {
   origin: [
+    "https://shopspher.com",
     "http://localhost:5173",
     "https://main.dfhc5lowsfl4h.amplifyapp.com",
-    "https://shopspher.com",
     "https://api.shopspher.com",
     "https://www.shopspher.com"
   ],
